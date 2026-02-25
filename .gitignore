@@ -213,3 +213,6 @@ __marimo__/
 
 # some demo files
 demo.py
+
+# artifacts
+artifact/
