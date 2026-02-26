@@ -10,6 +10,11 @@ from src.exception import MyException
 
 from src.constants import DATABASE_NAME, MONGO_DB_URL_KEY
 
+# Silence the PyMongo internal debug logs
+logging.getLogger("pymongo").setLevel(logging.WARNING)
+# If using motor (async MongoDB)
+logging.getLogger("motor").setLevel(logging.WARNING)
+
 
 ca = certifi.where()
 

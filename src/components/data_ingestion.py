@@ -25,6 +25,7 @@ class DataIngestion:
         """
         try:
             self.data_ingestion_config = data_ingestion_config
+            
         except Exception as e:
             raise MyException(e, sys)
         
@@ -55,6 +56,7 @@ class DataIngestion:
             dataframe.to_csv(feature_store_file_path, index=False, header=True)
             logging.info(f"Exported data into feature store file path: {feature_store_file_path}")
             return dataframe
+        
         except Exception as e:
             raise MyException(e ,sys)
         
@@ -82,9 +84,10 @@ class DataIngestion:
 
             logging.info(f"Exporting data to train and test file path")
             # Export train and test sets to CSV
-            train_set.to_csv(self.data_ingestion_config.training_file_path)
-            test_set.to_csv(self.data_ingestion_config.testing_file_path)
+            train_set.to_csv(self.data_ingestion_config.training_file_path, index=False, header=True)
+            test_set.to_csv(self.data_ingestion_config.testing_file_path, index=False, header=True)
             logging.info("Expoted train and test data to respective file path.")
+
         except Exception as e:
             raise MyException(e, sys)
         
