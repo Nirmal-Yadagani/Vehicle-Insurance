@@ -6,6 +6,7 @@ from typing import Optional
 from src.configuration.mongo_db_connection import MongoDBClient
 from src.constants import DATABASE_NAME
 from src.exception import MyException
+from src.logger import logging
 
 class DataAccess:
     """DataAccess class is responsible for fetching data from MongoDB collections and converting it into pandas DataFrames for further processing in the machine learning pipeline."""
@@ -39,9 +40,9 @@ class DataAccess:
             else:
                 collection = self.mongo_client[database_name][collection_name]
             
-            print(f"fetching data from collection {collection_name}")
+            logging.info(f"fetching data from collection {collection_name}")
             data = list(collection.find())
-            print(f"data fetched successfully from collection {collection_name} with {len(data)} records.")
+            logging.info(f"data fetched successfully from collection {collection_name} with {len(data)} records.")
             df = pd.DataFrame(data)
 
             if 'id' in df.columns.to_list():

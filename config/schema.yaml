@@ -12,7 +12,7 @@ columns:
   - Vintage: int
   - Response: int
 
-
+# for data validation
 numerical_columns:
   - Age
   - Driving_License
@@ -31,10 +31,24 @@ categorical_columns:
 drop_columns: _id
 
 # for data transformation
-num_features:
+# for standard scaler
+std_scaler_columns:
   - Age
   - Vintage
 
+# for Target encoding
+target_encoder_columns:
+  - Region_Code
+  - Policy_Sales_Channel
 
+# for minmax scaler
 mm_columns:
   - Annual_Premium
+
+# for onehot encoding
+onehot_encoder_columns:
+  - Gender 
+  - Driving_License
+  - Previously_Insured 
+  - Vehicle_Age 
+  - Vehicle_Damage

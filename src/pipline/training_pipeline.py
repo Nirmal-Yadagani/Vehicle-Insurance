@@ -4,8 +4,9 @@ from src.logger import logging
 
 from src.components.data_ingestion import DataIngestion
 from src.components.data_validation import DataValidation
-from src.entity.config_entity import DataIngestionConfig, DataValidationConfig
-from src.entity.artifact_entity import DataIngestionArtifact, DataValidationArtifact
+from src.components.data_transformation import DataTransformation
+from src.entity.config_entity import DataIngestionConfig, DataValidationConfig, DataTransformationConfig
+from src.entity.artifact_entity import DataIngestionArtifact, DataValidationArtifact, DataTransformationAritfact
 
 
 class TrainPipeline:
@@ -15,6 +16,7 @@ class TrainPipeline:
         # Load the configuration settings for data ingestion (e.g., paths, database details)
         self.data_ingestion_config = DataIngestionConfig()
         self.data_validation_config = DataValidationConfig()
+        self.data_transformation_config = DataTransformationConfig()
 
 
     def start_data_ingestion(self) -> DataIngestionArtifact:
@@ -78,6 +80,24 @@ class TrainPipeline:
         except Exception as e:
             raise MyException(e, sys)
         
+    
+    def start_data_transformation(self, data_ingestion_artifact: DataIngestionArtifact, 
+                                  data_validation_artifact: DataValidationArtifact) -> DataTransformationAritfact:
+        logging.info("Entered the start_data_transformation methos of TrainPipeline class")
+        try:
+            # Initialize the DataTransformation component with the predefined config
+            data_transformation = DataTransformation(data_ingestion_artifact=data_ingestion_artifact,
+                                                     data_validation_artifact=data_validation_artifact,
+                                                     data_transformation_config=self.data_transformation_config)
+            
+            data_transformation_artifact = data_transformation.initiate_data_transformation()
+            logging.info("Exited the start_data_transformation method of TrainPipeline class")
+            return data_transformation_artifact
+            
+
+        except Exception as e:
+            raise MyException(e, sys)
+        
 
     def run_pipeline(self) -> None:
         """"""
@@ -86,6 +106,8 @@ class TrainPipeline:
             # Start Ingestion, this captures the artifact which will eventually be passed to Data Validation
             data_ingestion = self.start_data_ingestion()
             data_validation = self.start_data_validation(data_ingestion_artifact=data_ingestion)
+            data_transformation = self.start_data_transformation(data_ingestion_artifact=data_ingestion,
+                                                                 data_validation_artifact=data_validation)
             
         except Exception as e:
             raise MyException(e, sys)

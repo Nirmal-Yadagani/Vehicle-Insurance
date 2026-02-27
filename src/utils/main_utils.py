@@ -111,8 +111,8 @@ def save_numpy_array_data(arr: np.array, file_path: str) -> None:
     Saves a numpy array data to a specified file path.
 
     Args:
-        file_path (str): The system path where the numpy array will be saved.
         array (np.array): The numpy array data to be saved.
+        file_path (str): The system path where the numpy array will be saved.
 
     Returns:
         None
