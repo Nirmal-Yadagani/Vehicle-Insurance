@@ -88,23 +88,21 @@ class DataTransformation:
             ct = self.get_data_transformer_object()
             logging.info('Got the column transformer object')
 
-            smoteen = SMOTEENN(sampling_strategy="minority")
-            steps = [('ct', ct),
-                     ('smoteen', smoteen)]
+            input_features_train_transformed = ct.fit_transform(input_features_train_df, target_features_train_df)
+            input_features_test_transformed = ct.transform(input_features_test_df)
             
-            preprocessor = Pipeline(steps=steps).set_output(transform='pandas')
-            logging.info('Created the preprocessor object with smoteen included')
-
-            input_features_train_final, target_features_train_final = preprocessor.fit_resample(input_features_train_df, target_features_train_df)
+            smoteen = SMOTEENN(sampling_strategy="minority")
+            input_features_train_final, target_features_train_final = smoteen.fit_resample(input_features_train_transformed, target_features_train_df)
+            logging.info("Smoteenn applied on train data.")
 
             train_arr = np.c_[input_features_train_final, target_features_train_final]
-            test_arr = np.c_[input_features_test_df, target_features_test_df]
+            test_arr = np.c_[input_features_test_transformed.to_numpy(), target_features_test_df.to_numpy()]
             logging.info("feature-target concatenation done for train-test df")
 
 
             dir_name = self.data_transformation_config.data_tranformation_dir
             os.makedirs(dir_name, exist_ok=True)
-            save_object(preprocessor, self.data_transformation_config.transformed_object_file_path)
+            save_object(ct, self.data_transformation_config.transformed_object_file_path)
             save_numpy_array_data(train_arr, self.data_transformation_config.transformed_train_file_path)
             save_numpy_array_data(test_arr, self.data_transformation_config.transformed_test_file_path)
             logging.info("Saved transform object and transformed files.")
