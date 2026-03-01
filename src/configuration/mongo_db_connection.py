@@ -1,14 +1,17 @@
 import os
 import sys
+
+import logging
 import pymongo
 import certifi
+import structlog
 from dotenv import load_dotenv
 
-
-from src.logger import logging
 from src.exception import MyException
-
 from src.constants import DATABASE_NAME, MONGO_DB_URL_KEY
+
+# get the structlog logger
+logger = structlog.get_logger()
 
 # Silence the PyMongo internal debug logs
 logging.getLogger("pymongo").setLevel(logging.WARNING)
@@ -24,9 +27,11 @@ class MongoDBClient:
     client = None
     def __init__(self, database_name: str=DATABASE_NAME) -> None:
         """Initializes the MongoDB client and connects to the specified database. If the client is already initialized, it reuses the existing connection."""
+        log = logger.bind(database_name=database_name)
         try:
             # check if the client is already initialized to avoid multiple connections
             if MongoDBClient.client is None:
+                log.info("Initializing MongoDB client for the first time.")
                 load_dotenv()
                 self.mongo_db_url = os.getenv(MONGO_DB_URL_KEY)
 
@@ -39,13 +44,9 @@ class MongoDBClient:
             self.client = MongoDBClient.client
             self.database = self.client[database_name]
             self.database_name = database_name
-            logging.info("MongoDB client initialized successfully.")
+            log.info("MongoDB client initialized successfully.")
 
         except Exception as e:
-            logging.error(f"Error initializing MongoDB client: {e}")
-            raise MyException(e, sys)
-        
-
-
-
-
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            log.error(f"Error initializing MongoDB client", error=str(custom_error))
+            raise custom_error

@@ -1,12 +1,12 @@
 import json
-import sys
 import os
+import sys
 
 import pandas as pd
 from pandas import DataFrame
 
 from src.exception import MyException
-from src.logger import logging
+from src.logger import logger
 from src.utils.main_utils  import read_yaml_file
 from src.entity.config_entity import DataValidationConfig
 from src.entity.artifact_entity import DataValidationArtifact, DataIngestionArtifact
@@ -30,12 +30,15 @@ class DataValidation:
             self.data_ingestion_artifact = data_ingestion_artifact
             self.data_validation_config = data_validation_config
             self._schema_config = read_yaml_file(file_path=SCHEMA_FILE_PATH)
+            self.log = logger.bind(report_path=self.data_validation_config.validation_report_file_path)
 
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            logger.error(f"Error initializing DataValidation", error=str(custom_error))
+            raise custom_error
         
 
-    def validate_number_of_columns(self, dataframe: DataFrame) -> bool:
+    def validate_number_of_columns(self, dataframe: DataFrame, dataset_type: str) -> bool:
         """
         Validates if the total number of columns in the dataframe matches the schema.
 
@@ -46,15 +49,20 @@ class DataValidation:
             bool: True if column count matches, False otherwise.
         """
         try:
-            status = len(dataframe.columns) == len(self._schema_config['columns'])
-            logging.info(f"Does number of columns match: [{status}]")
+            expected_count = len(self._schema_config['columns'])
+            actual_count = len(dataframe.columns)
+            status = actual_count == expected_count
+
+            self.log.info(f"Column count validation", dataframe_type=dataset_type, expected_count=expected_count, actual_count=actual_count, status=status)
             return status
 
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            self.log.error('Error occurred while validating number of columns.', error=str(custom_error))
+            raise custom_error
         
     
-    def is_column_exist(self, dataframe: DataFrame) -> bool:
+    def is_column_exist(self, dataframe: DataFrame, dataset_type: str) -> bool:
         """
         Checks if all required numerical and categorical columns exist in the dataframe.
 
@@ -66,27 +74,23 @@ class DataValidation:
         """
         try:
             dataframe_columns = dataframe.columns
-            missing_numerical_columns = []
-            missing_categorical_columns = []
-            for column in self._schema_config['numerical_columns']:
-                if column not in dataframe_columns:
-                    missing_numerical_columns.append(column)
+            missing_numerical = [col for col in self._schema_config['numerical_columns'] if col not in dataframe_columns]
+            missing_categorical = [col for col in self._schema_config['categorical_columns'] if col not in dataframe_columns]
 
-
-            for column in self._schema_config['categorical_columns']:
-                if column not in dataframe_columns:
-                    missing_categorical_columns.append(column)
-
-            if len(missing_numerical_columns) > 0:
-                logging.info(f"Missing there numerical columns: {missing_numerical_columns}")
-
-            if len(missing_categorical_columns) > 0:
-                logging.info(f"Missing there categorical columns: {missing_categorical_columns}")
-
-            return False if len(missing_categorical_columns)>0 or len(missing_numerical_columns)>0 else True
+            if missing_numerical or missing_categorical:
+                self.log.warning("missing_columns_detected",
+                                 dataset_type=dataset_type,
+                                 missing_num=missing_numerical, 
+                                 missing_cat=missing_categorical)
+                return False
+            
+            self.log.info("All required columns are present in the dataframe.", dataset_type=dataset_type)
+            return True
         
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            self.log.error('Error occurred while checking column existence.', error=str(custom_error))
+            raise custom_error
         
     @staticmethod
     def read_data(file_path) -> DataFrame:
@@ -103,6 +107,8 @@ class DataValidation:
             return pd.read_csv(file_path)
         
         except Exception as e:
+            if isinstance(e, MyException):
+                raise e
             raise MyException(e, sys)
         
 
@@ -116,39 +122,23 @@ class DataValidation:
         Raises:
             MyException: If validation process fails.
         """
+        self.log.info("Starting data validation process.")
         try:
             validation_error_msg = ""
-            logging.info("Starting data validation")
             train_df, test_df = (DataValidation.read_data(file_path=self.data_ingestion_artifact.trained_file_path),
                                  DataValidation.read_data(file_path=self.data_ingestion_artifact.test_file_path))
             
-            status = self.validate_number_of_columns(dataframe=train_df)
-            if not status:
-                validation_error_msg += "Columns are missing in training dataframe."
-            else:
-                logging.info(f"All required columns present in training dataframe: [{status}]")
+            # Validate Train Data
+            if not self.validate_number_of_columns(train_df, "train"):
+                validation_error_msg += "Column count mismatch in Train data. "
+            if not self.is_column_exist(train_df, "train"):
+                validation_error_msg += "Missing specific columns in Train data. "
 
-
-            status = self.is_column_exist(dataframe=train_df)
-            if not status:
-                validation_error_msg += "Columns are missing in training dataframe."
-            else:
-                logging.info(f"All categorical/int columns present in training dataframe: [{status}]")
-
-
-            status = self.validate_number_of_columns(dataframe=test_df)
-            if not status:
-                validation_error_msg += "Columns are missing in testing dataframe."
-            else:
-                logging.info(f"All required columns present in testing dataframe: {status}")
-
-
-            status = self.is_column_exist(dataframe=test_df)
-            if not status:
-                validation_error_msg += "Columns are missing in testing dataframe."
-            else:
-                logging.info(f"All categorical/int columns present in testing dataframe: {status}")
-            
+            # Validate Test Data
+            if not self.validate_number_of_columns(test_df, "test"):
+                validation_error_msg += "Column count mismatch in Test data. "
+            if not self.is_column_exist(test_df, "test"):
+                validation_error_msg += "Missing specific columns in Test data. "
 
             validation_status = len(validation_error_msg) == 0
 
@@ -163,12 +153,11 @@ class DataValidation:
             data_validation_artifact = DataValidationArtifact(validation_status=validation_status,
                                                               message=validation_error_msg,
                                                               validation_report_file_path=self.data_validation_config.validation_report_file_path)
-            
-            logging.info("Data validation artifact created and saved to JSON file.")
-            logging.info(f"Data Validation Artifact: {data_validation_artifact}")
             return data_validation_artifact
         
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            self.log.error("Error during data validation process.", error=str(custom_error))
+            raise custom_error
             
 

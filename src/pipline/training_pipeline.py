@@ -1,7 +1,9 @@
+import logging
 import sys
-from src.exception import MyException
-from src.logger import logging
+from datetime import datetime
 
+from src.exception import MyException
+from src.logger import logger
 from src.components.data_ingestion import DataIngestion
 from src.components.data_validation import DataValidation
 from src.components.data_transformation import DataTransformation
@@ -14,11 +16,22 @@ class TrainPipeline:
     """"""
     def __init__(self):
         """"""
-        # Load the configuration settings for data ingestion (e.g., paths, database details)
-        self.data_ingestion_config = DataIngestionConfig()
-        self.data_validation_config = DataValidationConfig()
-        self.data_transformation_config = DataTransformationConfig()
-        self.model_trainer_config = ModelTrainerConfig()
+        try:
+            # Generate a unique run ID based on the current timestamp to track this specific execution of the pipeline
+            self.run_id = datetime.now().strftime("%m_%d_%Y_%H_%M_%S")
+
+            self.log = logger.bind(run_id=self.run_id)
+
+            # Load the configuration settings for data ingestion (e.g., paths, database details)
+            self.data_ingestion_config = DataIngestionConfig()
+            self.data_validation_config = DataValidationConfig()
+            self.data_transformation_config = DataTransformationConfig()
+            self.model_trainer_config = ModelTrainerConfig()
+        
+        except Exception as e:
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            logger.error("Error initializing TrainPipeline", error=str(custom_error))
+            raise custom_error
 
 
     def start_data_ingestion(self) -> DataIngestionArtifact:
@@ -32,8 +45,7 @@ class TrainPipeline:
             MyException: If any error occurs during the ingestion process.
         """
         try:
-            logging.info("Entered the start_data_ingestion method of TrainPipeline class")
-            logging.info("Getting the data from mongodb")
+            self.log.info('pipeline_stage_started', stage_name="Data Ingestion")
 
             # Initialize the DataIngestion component with the predefined config
             data_ingestion = DataIngestion(self.data_ingestion_config)
@@ -41,11 +53,13 @@ class TrainPipeline:
             # Execute the ingestion process and get back the artifact (file paths)
             data_ingestion_artifact = data_ingestion.initiate_data_ingestion()
 
-            logging.info("Got the train_set and test_set from mongodb")
-            logging.info("Exited the start_data_ingestion method of TrainPipeline class")
+            self.log.info('pipeline_stage_completed', stage_name="Data Ingestion", train_path=data_ingestion_artifact.trained_file_path, test_path=data_ingestion_artifact.test_file_path)
             return data_ingestion_artifact
+        
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            logger.error("pipeline_stage_failed", stage_name="Data Ingestion", error=str(custom_error))
+            raise custom_error
         
 
     def start_data_validation(self, data_ingestion_artifact: DataIngestionArtifact) -> DataValidationArtifact:
@@ -67,63 +81,74 @@ class TrainPipeline:
             MyException: If any error occurs during the initialization or execution 
                 of the validation process.
         """
-        logging.info("Entered the start_data_validation method of TrainPipeline class")
         try:
-            
+            self.log.info('pipeline_stage_started', stage_name="Data Validation")
+
             # Initialize the DataValidation component with the predefined config
             data_validation = DataValidation(data_ingestion_artifact=data_ingestion_artifact, data_validation_config=self.data_validation_config)
 
             data_validation_artifact = data_validation.initiate_data_validation()
 
-            logging.info("Performed the data validation operation")
-            logging.info("Exited the start_data_validation method of TrainPipeline class")
+            self.log.info('pipeline_stage_completed', stage_name="Data Validation", validation_status=data_validation_artifact.validation_status, report_path=data_validation_artifact.validation_report_file_path)
             return data_validation_artifact
         
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            logger.error("pipeline_stage_failed", stage_name="Data Validation", error=str(custom_error))
+            raise custom_error
         
     
     def start_data_transformation(self, data_ingestion_artifact: DataIngestionArtifact, 
                                   data_validation_artifact: DataValidationArtifact) -> DataTransformationAritfact:
-        logging.info("Entered the start_data_transformation methos of TrainPipeline class")
         try:
+            self.log.info('pipeline_stage_started', stage_name="Data Transformation")
             # Initialize the DataTransformation component with the predefined config
             data_transformation = DataTransformation(data_ingestion_artifact=data_ingestion_artifact,
                                                      data_validation_artifact=data_validation_artifact,
                                                      data_transformation_config=self.data_transformation_config)
             
             data_transformation_artifact = data_transformation.initiate_data_transformation()
-            logging.info("Exited the start_data_transformation method of TrainPipeline class")
+            self.log.info('pipeline_stage_completed', stage_name="Data Transformation")
             return data_transformation_artifact
             
 
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            logger.error("pipeline_stage_failed", stage_name="Data Transformation", error=str(custom_error))
+            raise custom_error
         
     
     def start_model_trainer(self, data_transformation_artifact: DataIngestionArtifact) -> ModelTrainerArtifact:
         try:
+            self.log.info('pipeline_stage_started', stage_name="Model Trainer")
             model_trainer = ModelTrainer(data_transformation_artifact=data_transformation_artifact,
                                          model_trainer_config=self.model_trainer_config)
             
             model_trainer_artifact = model_trainer.initiate_model_trainer()
+            self.log.info('pipeline_stage_completed', stage_name="Model Trainer")
             return model_trainer_artifact
 
         except Exception as e:
-            raise MyException(e ,sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            self.log.error("pipeline_stage_failed", stage_name="Model Trainer", error=str(custom_error))
+            raise custom_error
         
 
     def run_pipeline(self) -> None:
         """"""
 
         try:
+            self.log.info("entire_pipeline_run_initiated")
             # Start Ingestion, this captures the artifact which will eventually be passed to Data Validation
             data_ingestion = self.start_data_ingestion()
             data_validation = self.start_data_validation(data_ingestion_artifact=data_ingestion)
             data_transformation = self.start_data_transformation(data_ingestion_artifact=data_ingestion,
                                                                  data_validation_artifact=data_validation)
             model_trainer = self.start_model_trainer(data_transformation_artifact=data_transformation)
+            self.log.info("entire_pipeline_run_completed", final_model_path=model_trainer.trained_model_file_path)
             
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            logger.error("entire_pipeline_run_failed", error=str(custom_error))
+            raise custom_error
 

@@ -6,7 +6,7 @@ import dill
 import yaml
 
 from src.exception import MyException
-from src.logger import logging
+from src.logger import logger
 
 
 
@@ -24,10 +24,13 @@ def read_yaml_file(file_path: str) -> dict:
         MyException: If the file is not found or contains invalid YAML syntax.
     """
     try:
+        logger.info(f"Reading the YAML file.", file_path=file_path)
         with open(file_path, 'rb') as yaml_file:
             return yaml.safe_load(yaml_file)
     
     except Exception as e:
+        if isinstance(e, MyException):
+                raise e
         raise MyException(e, sys)
     
 
@@ -51,12 +54,17 @@ def write_yaml_file(file_path: str, content: object, replace: bool=False) -> Non
         if replace:
             if os.path.exists(file_path):
                 os.remove(file_path)
+                logger.info(f"Existing file removed before writing new content.", file_path=file_path)
+
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, 'wb') as yaml_file:
-            yaml.safe_dump(content, file_path, )
-        logging.info(f"Saved YAML file at {file_path}")
+            yaml.safe_dump(content, yaml_file)
+
+        logger.info("Saved YAML file.", file_path=file_path, status="success")
 
     except Exception as e:
+        if isinstance(e, MyException):
+                raise e
         raise MyException(e, sys)
     
 
@@ -74,10 +82,13 @@ def load_object(file_path: str) -> object:
         MyException: If the file is missing or corrupted during the loading process.
     """
     try:
+        logger.info(f"Loading the object.", file_path=file_path)
         with open(file_path, 'rb') as file_obj:
             return dill.load(file_obj)
 
     except Exception as e:
+        if isinstance(e, MyException):
+                raise e
         raise MyException(e, sys)
     
 
@@ -100,9 +111,11 @@ def save_object(obj: object, file_path: str) -> None:
         os.makedirs(dir_path, exist_ok=True)
         with open(file_path, 'wb') as file_obj:
             dill.dump(obj, file_obj)
-        logging.info(f"Saved the object to {file_path}")
+        logger.info(f"Saved the object.", file_path=file_path, object_type=type(obj).__name__)
 
     except Exception as e:
+        if isinstance(e, MyException):
+                raise e
         raise MyException(e, sys)
     
 
@@ -125,9 +138,11 @@ def save_numpy_array_data(arr: np.array, file_path: str) -> None:
         os.makedirs(dir_path, exist_ok=True)
         with open(file_path, 'wb') as file_obj:
             np.save(file_obj, arr)
-        logging.info(f"Saved the Numpy array at {file_path}")
+        logger.info(f"Saved the Numpy array.", file_path=file_path, array_shape=arr.shape)
 
     except Exception as e:
+        if isinstance(e, MyException):
+                raise e
         raise MyException(e, sys)
 
 
@@ -145,8 +160,11 @@ def load_numpy_array_data(file_path: str) -> np.array:
         MyException: If the file cannot be found or is not a valid numpy binary file.
     """
     try:
+        logger.info(f"Loading the Numpy array.", file_path=file_path)
         with open(file_path, 'rb') as file_obj:
             return np.load(file_obj)
 
     except Exception as e:
+        if isinstance(e, MyException):
+                raise e
         raise MyException(e, sys)

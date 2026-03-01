@@ -19,3 +19,5 @@ uvicorn
 jinja2
 imblearn
 python-dotenv
+from-root
+structlog

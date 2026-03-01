@@ -1,4 +1,5 @@
 import sys
+
 import pandas as pd
 import numpy as np
 from typing import Optional
@@ -6,7 +7,7 @@ from typing import Optional
 from src.configuration.mongo_db_connection import MongoDBClient
 from src.constants import DATABASE_NAME
 from src.exception import MyException
-from src.logger import logging
+from src.logger import logger
 
 class DataAccess:
     """DataAccess class is responsible for fetching data from MongoDB collections and converting it into pandas DataFrames for further processing in the machine learning pipeline."""
@@ -16,11 +17,12 @@ class DataAccess:
         Raises:
             MyException: If there is an error while initializing the MongoDB client.
         """
-
         try:
             self.mongo_client = MongoDBClient(database_name=DATABASE_NAME)
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            logger.error('Error occurred while initializing MongoDB client.', error=str(custom_error))
+            raise custom_error
         
         
     def export_collection_as_dataframe(self, collection_name: str, database_name: Optional[str] = None) -> pd.DataFrame:
@@ -33,22 +35,27 @@ class DataAccess:
         Raises:
             MyException: If there is an error while fetching data from the MongoDB collection or converting it to a DataFrame.
         """
-
+        log = logger.bind(collection_name=collection_name, database_name=database_name or DATABASE_NAME)
         try:
             if database_name is None:
                 collection = self.mongo_client.database[collection_name]
             else:
                 collection = self.mongo_client[database_name][collection_name]
             
-            logging.info(f"fetching data from collection {collection_name}")
+            log.info(f"fetching data from mongoDB.")
             data = list(collection.find())
-            logging.info(f"data fetched successfully from collection {collection_name} with {len(data)} records.")
+            log.info(f"data fetched successfully.", record_count=len(data))
             df = pd.DataFrame(data)
 
             if 'id' in df.columns.to_list():
                 df.drop(columns=["id"], inplace=True)
+                log.info('Dropped "id" column from DataFrame.', remaining_columns=df.columns.to_list())
+
             df.replace({"na":np.nan},inplace=True)
+            log.info("dataframe transformed successfully.", dataframe_shape=df.shape)
             return df
         
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            log.error('Error occurred while exporting data from MongoDB collection.', error=str(custom_error))
+            raise custom_error

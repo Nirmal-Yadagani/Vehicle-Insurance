@@ -1,44 +1,63 @@
-import logging
 import os
-from logging.handlers import RotatingFileHandler
-from from_root import from_root
+import sys
+import logging
+import structlog
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
-
-# constants for logging
-LOG_DIR = from_root('logs')
-LOG_FILE_NAME = f'{datetime.now().strftime("%Y-%m-%d")}.log'
-MAX_LOG_FILE_SIZE = 5 * 1024 * 1024  # 10 MB
-BACKUP_COUNT = 3
-
-# Define the log directory path and log file path
-LOG_DIR_PATH = os.path.join(from_root(), LOG_DIR)
-os.makedirs(LOG_DIR_PATH, exist_ok=True)
-LOG_FILE_PATH = os.path.join(LOG_DIR_PATH, LOG_FILE_NAME)
+# Define paths
+LOG_DIR = "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, f"{datetime.now().strftime('%m_%d_%Y_%H_%M_%S')}.log")
 
 def configure_logger():
-    """Configures the logger to write logs to a file and console with rotation."""
-    # create a custom logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
+    # 1. Shared Processors: These process every log entry
+    processors = [
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+    ]
 
-    # Create a rotating file handler
-    file_handler = RotatingFileHandler(LOG_FILE_PATH, maxBytes=MAX_LOG_FILE_SIZE, backupCount=BACKUP_COUNT)
-    file_handler.setLevel(logging.DEBUG)
+    # 2. Standard Logging Handlers
+    # Console Handler (Human-friendly)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(
+        structlog.stdlib.ProcessorFormatter(
+            processor=structlog.dev.ConsoleRenderer(colors=True),
+            foreign_pre_chain=processors,
+        )
+    )
 
-    # Create a console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    # File Handler (JSON-friendly for tracking ML experiments)
+    file_handler = RotatingFileHandler(LOG_FILE, maxBytes=10*1024*1024, backupCount=5)
+    file_handler.setFormatter(
+        structlog.stdlib.ProcessorFormatter(
+            processor=structlog.processors.JSONRenderer(),
+            foreign_pre_chain=processors,
+        )
+    )
 
-    # Define a log format
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
+    # 3. Configure Root Logger
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[console_handler, file_handler]
+    )
 
-    # Add handlers to the logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+    # 4. Final Structlog Configuration
+    structlog.configure(
+        processors=processors + [
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
 
-
-# Configure the logger when the module is imported
+# Run configuration on import
 configure_logger()
+
+# Export a base logger
+logger = structlog.get_logger()

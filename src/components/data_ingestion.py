@@ -4,7 +4,7 @@ import sys
 from pandas import DataFrame
 from sklearn.model_selection import train_test_split
 
-from src.logger import logging
+from src.logger import logger
 from src.exception import MyException
 from src.data_access.data_access import DataAccess
 from src.entity.config_entity import DataIngestionConfig
@@ -25,9 +25,12 @@ class DataIngestion:
         """
         try:
             self.data_ingestion_config = data_ingestion_config
+            self.log = logger.bind(collection_name=self.data_ingestion_config.collection_name)
             
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            logger.error('Error occurred while initializing DataIngestion component.', error=str(custom_error))
+            raise custom_error
         
 
     def export_data_into_feature_store(self) -> DataFrame:
@@ -41,11 +44,11 @@ class DataIngestion:
             MyException: If any error occurs during database access or file writing.
         """
         try:
-            logging.info(f"Exporting data from mongodb")
+            self.log.info(f"Exporting data from mongodb")
             # Initialize data access object to interact with MongoDB
             data = DataAccess()
             dataframe = data.export_collection_as_dataframe(collection_name=self.data_ingestion_config.collection_name)
-            logging.info(f"Shape of dataframe: {dataframe.shape}")
+            self.log.info(f"data fetched successfully.", dataframe_shape=dataframe.shape)
 
             # Define path and ensure the directory exists before saving
             feature_store_file_path = self.data_ingestion_config.feature_store_file_path
@@ -54,11 +57,13 @@ class DataIngestion:
 
             # Save the raw dataframe to the feature store (local CSV)
             dataframe.to_csv(feature_store_file_path, index=False, header=True)
-            logging.info(f"Exported data into feature store file path: {feature_store_file_path}")
+            self.log.info(f"Exported data into feature store.", file_path=feature_store_file_path)
             return dataframe
         
         except Exception as e:
-            raise MyException(e ,sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            self.log.error('Error occurred while exporting data into feature store.', error=str(custom_error))
+            raise custom_error
         
     
     def split_data_as_train_test(self, dataframe: DataFrame) -> None:
@@ -71,25 +76,25 @@ class DataIngestion:
         Raises:
             MyException: If the split or file writing process fails.
         """
-        logging.info("Entered split_data_as_train_test method of Data_Ingestion class")
         try:
+            self.log.info("Entered split_data_as_train_test method of Data_Ingestion class", ratio=self.data_ingestion_config.train_test_split_ratio)
             # Perform the split using sklearn.train_test_split
             train_set, test_set = train_test_split(dataframe, test_size=self.data_ingestion_config.train_test_split_ratio)
-            logging.info("Performed train test split on dataframe")
-            logging.info("Exited split_data_ad_train_test method of Data_ingestion class")
+
 
             # Prepare the directory for training/testing files
             dir_path = os.path.dirname(self.data_ingestion_config.training_file_path)
             os.makedirs(dir_path, exist_ok=True)
 
-            logging.info(f"Exporting data to train and test file path")
             # Export train and test sets to CSV
             train_set.to_csv(self.data_ingestion_config.training_file_path, index=False, header=True)
             test_set.to_csv(self.data_ingestion_config.testing_file_path, index=False, header=True)
-            logging.info("Expoted train and test data to respective file path.")
+            self.log.info("Exported train and test data", train_shape=train_set.shape, test_shape=test_set.shape)
 
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            self.log.error('Error occurred while splitting data into train and test sets.', error=str(custom_error))
+            raise custom_error
         
 
     def initiate_data_ingestion(self) -> DataIngestionArtifact:
@@ -102,22 +107,21 @@ class DataIngestion:
         Raises:
             MyException: If any step in the ingestion pipeline fails.
         """
-        logging.info("Entered initiate_data_ingestion method of DataIngestion class")
+        self.log.info("Entered initiate_data_ingestion method of DataIngestion class")
         try:
             # Pull data from source
             dataframe = self.export_data_into_feature_store()
 
-            logging.info('Got the data from mongoDB')
             # Split data for model training
             self.split_data_as_train_test(dataframe=dataframe)
 
-            logging.info('Performed train test split on the dataset')
-            logging.info('Exited initiate_data_ingestion method of DataIngestion class')
-
             # Package the results into an artifact object
             data_ingestion_artifact = DataIngestionArtifact(trained_file_path=self.data_ingestion_config.training_file_path, test_file_path=self.data_ingestion_config.testing_file_path)
-            logging.info(f"Data Ingestion artifact: {data_ingestion_artifact}")
+            self.log.info("Data ingestion completed successfully", data_ingestion_artifact=data_ingestion_artifact.__dict__)
             return data_ingestion_artifact
+        
         except Exception as e:
-            raise MyException(e, sys)
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            self.log.error('Error occurred during the data ingestion process.', error=str(custom_error))
+            raise custom_error
 
