@@ -52,3 +52,16 @@ class ModelTrainerConfig:
     _max_depth = MODEL_TRAINER_MAX_DEPTH
     _criterion = MODEL_TRAINER_CRITERION
     _random_state = MODEL_TRAINER_RANDOM_STATE
+
+
+@dataclass
+class ModelEvaluationConfig:
+    changed_thresold_score: float = MODEL_EVALUATION_CHANGED_THRESHOLD_SCORE
+    bucket_name: str = MODEL_BUCKET_NAME
+    s3_model_key_path: str = MODEL_FILE_NAME
+
+
+@dataclass
+class ModelPusherConfig:
+    bucket_name: str = MODEL_BUCKET_NAME
+    s3_model_key_path: str = MODEL_FILE_NAME

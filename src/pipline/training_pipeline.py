@@ -1,4 +1,3 @@
-import logging
 import sys
 from datetime import datetime
 
@@ -8,12 +7,18 @@ from src.components.data_ingestion import DataIngestion
 from src.components.data_validation import DataValidation
 from src.components.data_transformation import DataTransformation
 from src.components.model_trainer import ModelTrainer
-from src.entity.config_entity import DataIngestionConfig, DataValidationConfig, DataTransformationConfig, ModelTrainerConfig
-from src.entity.artifact_entity import DataIngestionArtifact, DataValidationArtifact, DataTransformationAritfact, ModelTrainerArtifact
+from src.components.model_evaluation import ModelEvaluation
+from src.components.model_pusher import ModelPusher
+from src.entity.config_entity import DataIngestionConfig, DataValidationConfig, DataTransformationConfig, ModelTrainerConfig, ModelEvaluationConfig, ModelPusherConfig
+from src.entity.artifact_entity import DataIngestionArtifact, DataValidationArtifact, DataTransformationAritfact, ModelTrainerArtifact, ModelEvaluationArtifact, ModelPusherArtifact
 
 
 class TrainPipeline:
-    """"""
+    """
+    Orchestrates the entire machine learning pipeline.
+    Sequentially executes ingestion, validation, transformation, training, 
+    evaluation, and deployment (pushing).
+    """
     def __init__(self):
         """"""
         try:
@@ -27,6 +32,8 @@ class TrainPipeline:
             self.data_validation_config = DataValidationConfig()
             self.data_transformation_config = DataTransformationConfig()
             self.model_trainer_config = ModelTrainerConfig()
+            self.model_evaluation_config = ModelEvaluationConfig()
+            self.model_pusher_config = ModelPusherConfig()
         
         except Exception as e:
             custom_error = e if isinstance(e, MyException) else MyException(e, sys)
@@ -100,6 +107,26 @@ class TrainPipeline:
     
     def start_data_transformation(self, data_ingestion_artifact: DataIngestionArtifact, 
                                   data_validation_artifact: DataValidationArtifact) -> DataTransformationAritfact:
+        """
+        Triggers the data transformation component to engineer features and handle data preprocessing.
+
+        This method takes the validated data and applies transformations like scaling and 
+        synthetic oversampling (SMOTEENN) to prepare the dataset for model training.
+
+        Args:
+            data_ingestion_artifact (DataIngestionArtifact): Contains the file paths of 
+                the training and testing datasets.
+            data_validation_artifact (DataValidationArtifact): Contains the validation status 
+                to ensure transformation is performed on valid data.
+
+        Returns:
+            DataTransformationAritfact: Metadata containing paths to the transformed 
+                numpy arrays and the saved preprocessing object.
+
+        Raises:
+            MyException: If any error occurs during the feature engineering or 
+                transformation process.
+        """
         try:
             self.log.info('pipeline_stage_started', stage_name="Data Transformation")
             # Initialize the DataTransformation component with the predefined config
@@ -119,6 +146,24 @@ class TrainPipeline:
         
     
     def start_model_trainer(self, data_transformation_artifact: DataIngestionArtifact) -> ModelTrainerArtifact:
+        """
+        Triggers the model trainer component to fit the machine learning algorithm.
+
+        This stage uses the transformed training data to train the model and evaluates 
+        it against the transformed test data to generate performance metrics.
+
+        Args:
+            data_transformation_artifact (DataTransformationAritfact): Contains paths to 
+                the transformed numpy arrays (train/test) and the preprocessing object.
+
+        Returns:
+            ModelTrainerArtifact: Metadata containing the path to the trained model file 
+                and the classification metric report.
+
+        Raises:
+            MyException: If any error occurs during model training or hyperparameter 
+                assignment.
+        """
         try:
             self.log.info('pipeline_stage_started', stage_name="Model Trainer")
             model_trainer = ModelTrainer(data_transformation_artifact=data_transformation_artifact,
@@ -133,10 +178,82 @@ class TrainPipeline:
             self.log.error("pipeline_stage_failed", stage_name="Model Trainer", error=str(custom_error))
             raise custom_error
         
+    
+    def start_model_evaluation(self, data_ingestion_artifact: DataIngestionArtifact, model_trainer_artifact: ModelTrainerArtifact) -> ModelEvaluationArtifact:
+        """
+        Triggers the model evaluation component to compare the new model with the production model.
+
+        This method acts as a decision gate, evaluating the current model's performance 
+        against the 'Champion' model currently stored in S3 to determine if an update is required.
+
+        Args:
+            data_ingestion_artifact (DataIngestionArtifact): Used to retrieve the original 
+                test data for unbiased comparison.
+            model_trainer_artifact (ModelTrainerArtifact): Contains the newly trained 
+                model object and its performance scores.
+
+        Returns:
+            ModelEvaluationArtifact: Metadata indicating whether the new model is accepted 
+                for production based on the defined performance threshold.
+
+        Raises:
+            MyException: If any error occurs during the model comparison or S3 
+                retrieval process.
+        """
+        try:
+            self.log.info('pipeline_stage_started', stage_name="Model Evaluation")
+            model_evaluation = ModelEvaluation(data_ingestion_artifact=data_ingestion_artifact,
+                                               model_trainer_artifact=model_trainer_artifact,
+                                               model_eval_config=self.model_evaluation_config)
+            
+            model_evaluation_artifact = model_evaluation.initiate_model_evaluation()
+            self.log.info('pipeline_stage_completed', stage_name="Model Evaluation")
+            return model_evaluation_artifact
+
+        except Exception as e:
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            self.log.error("pipeline_stage_failed", stage_name="Model Evaluation", error=str(custom_error))
+            raise custom_error
+
+
+    def start_model_pusher(self, model_evaluation_artifact: ModelEvaluationArtifact) -> ModelPusherArtifact:
+        """
+        Triggers the model pusher component to deploy the accepted model to S3.
+
+        This final stage automates the deployment by taking the validated model 
+        artifact and uploading it to the production bucket in AWS S3.
+
+        Args:
+            model_evaluation_artifact (ModelEvaluationArtifact): Contains the acceptance 
+                status and paths for the validated model.
+
+        Returns:
+            ModelPusherArtifact: Metadata confirming the S3 bucket and key where 
+                the model was successfully deployed.
+
+        Raises:
+            MyException: If any error occurs during the cloud upload or file 
+                handling process.
+        """
+        try:
+            self.log.info('pipeline_stage_started', stage_name="Model Pusher")
+            model_pusher = ModelPusher(model_pusher_config=self.model_pusher_config,
+                                       model_evaluation_artifact=model_evaluation_artifact)
+            
+            model_pusher_artifact = model_pusher.initiate_model_pusher()
+            self.log.info('pipeline_stage_completed', stage_name="Model Pusher")
+            return model_pusher_artifact
+        
+        except Exception as e:
+            custom_error = e if isinstance(e, MyException) else MyException(e, sys)
+            self.log.error("pipeline_stage_failed", stage_name="Model Pusher", error=str(custom_error))
+            raise custom_error
+        
 
     def run_pipeline(self) -> None:
-        """"""
-
+        """
+        Orchestrates the full flow with a safety gate at the evaluation stage.
+        """
         try:
             self.log.info("entire_pipeline_run_initiated")
             # Start Ingestion, this captures the artifact which will eventually be passed to Data Validation
@@ -145,7 +262,18 @@ class TrainPipeline:
             data_transformation = self.start_data_transformation(data_ingestion_artifact=data_ingestion,
                                                                  data_validation_artifact=data_validation)
             model_trainer = self.start_model_trainer(data_transformation_artifact=data_transformation)
-            self.log.info("entire_pipeline_run_completed", final_model_path=model_trainer.trained_model_file_path)
+            model_evaluation = self.start_model_evaluation(data_ingestion_artifact=data_ingestion,
+                                                           model_trainer_artifact=model_trainer)
+            
+
+            if model_evaluation.is_model_accepted:
+                self.log.info("model_accepted_proceeding_to_push")
+                self.start_model_pusher(model_evaluation_artifact=model_evaluation)
+            else:
+                self.log.warning("model_rejected_skipping_push", 
+                                 reason="Trained model performance is not better than S3 model.")
+
+            self.log.info("entire_pipeline_run_successful")
             
         except Exception as e:
             custom_error = e if isinstance(e, MyException) else MyException(e, sys)
