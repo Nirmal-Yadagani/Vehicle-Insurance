@@ -1,0 +1,11 @@
+__pycache__
+.venv
+artifact
+logs
+notebook
+.env
+.gitignore
+demo.py
+LICENSE
+main.py
+template.py
