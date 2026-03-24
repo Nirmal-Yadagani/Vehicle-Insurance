@@ -208,7 +208,6 @@ __marimo__/
 
 
 # data and model files
-*.csv
 *.pkl
 
 # some demo files
